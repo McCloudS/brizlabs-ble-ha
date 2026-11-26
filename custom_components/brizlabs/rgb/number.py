@@ -38,6 +38,10 @@ class BrizlabsNumber(NumberEntity):
 
     @property
     def available(self):
+        # The RGB string never reports sensitivity, so it stays settable while
+        # connected (value unknown until set); pixel count still needs a report.
+        if self.key == "sensitivity":
+            return self.device.available
         return self.device.available and self.key in self.device.values
 
     @property

@@ -315,3 +315,11 @@ async def test_light_seeds_device_from_restored_state(monkeypatch):
     light2.async_write_ha_state = lambda: None
     await light2.async_added_to_hass()
     assert not light2.is_on
+
+
+def test_mic_sensitivity_settable_without_report():
+    dev = FakeDevice(values={})
+    mic = BrizlabsNumber(dev, entry(), "sensitivity", 0, 100)
+    pixels = BrizlabsNumber(dev, entry(), "lightpixel_number_set", 1, 200)
+    assert mic.available and mic.native_value is None
+    assert not pixels.available
