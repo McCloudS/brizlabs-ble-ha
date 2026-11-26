@@ -2,16 +2,18 @@
 
 Custom integration v0.5.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
+**Fork notice:** this repository is the maintained fork of [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). v0.4 replaces the scene codec after an HCI capture of the official iOS app showed the real protocol (`scene_select`); the corresponding upstream PR is [tgmstudios/brizlabs-ha#1](https://github.com/tgmstudios/brizlabs-ha/pull/1). Verified on a 500-LED curtain strand. The upstream `dreamlight_scene_mode` codec may be correct for other BrizLabs products; this fork targets hardware that reports `scene_select`.
+
 **Status:** v0.4.0. The scene protocol was captured from the official iOS app over Bluetooth HCI and re-verified on real hardware: every scene, brightness level, colour/white balance, speed, loop sequence, and music mode in this integration maps to a frame the app itself sends. 61 automated tests replay the captured app traffic against a fake device. Unofficial, not affiliated with BrizLabs or Tuya.
 
 ## Installation
 ### HACS (custom repository)
 Requires [HACS](https://www.hacs.dev/). This repository is **not** in the HACS default catalog, so add it manually:
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tgmstudios&repository=brizlabs-ha&category=integration)
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Fail-Safe&repository=brizlabs-ble-ha&category=integration)
 
 1. HACS → ⋮ (top right) → **Custom repositories**, or use the badge above.
-2. Repository: `https://github.com/tgmstudios/brizlabs-ha`, Type: **Integration**, then **Add**.
+2. Repository: `https://github.com/Fail-Safe/brizlabs-ble-ha`, Type: **Integration**, then **Add**.
 3. Find **BrizLabs Micro String Lights** in HACS, **Download**, and restart Home Assistant.
 4. Settings → Devices & services → **Add integration** → BrizLabs Micro String Lights.
 Requires the Home Assistant Bluetooth integration with at least one *connectable* scanner in range of the light: a local adapter or an ESPHome Bluetooth proxy with active connections enabled. Declared Home Assistant minimum (`hacs.json`) is 2026.8.2; tested on 2026.8.2 and 2026.11.3 (bleak 3.0.2).
