@@ -6,10 +6,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 
 from . import scenes
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_RGB, entry_model
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    if entry_model(entry) == MODEL_RGB:
+        from .rgb import number as rgb_number
+        return await rgb_number.async_setup_entry(hass, entry, async_add_entities)
     device = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([BrizlabsNumber(device, "sensitivity", 0, 100, "Mic sensitivity"),
                         BrizlabsSceneField(device, "mix", "White mix", 10),

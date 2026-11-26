@@ -45,3 +45,72 @@ set_scene:
       description: Loop sequence as concatenated scene hex ids (e.g. "2021"); defaults to all scenes.
       selector:
         text:
+set_rgb_scene:
+  name: Set RGB scene
+  description: "RGB model only: start a scene effect with an ordered list of 1-7 colours."
+  fields:
+    address:
+      required: true
+      selector:
+        text:
+    effect:
+      required: true
+      description: Scene effect name (Rainbow, Flow, Up & Down, Chase, Shooting Star, Pile Up, Fall, Fade, Jump, Breath, Flicker, Shuttle, Random Flash, Rebound, Flutter, Filling).
+      selector:
+        text:
+    colors:
+      required: true
+      description: "Ordered list of {hue: 0-360, saturation: 0-100, value: 0-100}."
+      selector:
+        object:
+    speed:
+      selector:
+        number:
+          min: 0
+          max: 100
+    brightness:
+      selector:
+        number:
+          min: 1
+          max: 100
+    direction:
+      description: Scene direction. Omit for Right (the default header).
+      selector:
+        select:
+          options:
+            - Left
+            - Right
+paint_segments:
+  name: Paint segments
+  description: "RGB model only: set a colour on selected zero-based segments."
+  fields:
+    address:
+      required: true
+      selector:
+        text:
+    segments:
+      required: true
+      selector:
+        object:
+    hue:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 360
+    saturation:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+    value:
+      selector:
+        number:
+          min: 0
+          max: 100
+    segment_count:
+      selector:
+        number:
+          min: 1
+          max: 127

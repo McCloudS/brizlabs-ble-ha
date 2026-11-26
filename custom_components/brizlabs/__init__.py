@@ -11,12 +11,34 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from . import scenes
+from .rgb import scenes as rgb_scenes
 from .const import DOMAIN, NOTIFY_UUID, WRITE_UUID
 from .protocol import Decoder, encode
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["light", "number", "select"]
 
+_COLOUR_SCHEMA = vol.Schema({
+    vol.Required("hue"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
+    vol.Required("saturation"): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+    vol.Optional("value", default=100): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+})
+SET_RGB_SCENE_SCHEMA = vol.Schema({
+    vol.Required("address"): str,
+    vol.Required("effect"): vol.In(sorted(rgb_scenes.SCENE_NAMES.values())),
+    vol.Required("colors"): vol.All([_COLOUR_SCHEMA], vol.Length(min=1, max=rgb_scenes.MAX_COLOURS)),
+    vol.Optional("speed", default=50): vol.All(vol.Coerce(int), vol.Range(min=0, max=rgb_scenes.MAX_SPEED)),
+    vol.Optional("brightness"): vol.All(vol.Coerce(int), vol.Range(min=1, max=100)),
+    vol.Optional("direction"): vol.In(rgb_scenes.DIRECTION_OPTIONS),
+})
+PAINT_SEGMENTS_SCHEMA = vol.Schema({
+    vol.Required("address"): str,
+    vol.Required("segments"): [vol.Coerce(int)],
+    vol.Required("hue"): vol.All(vol.Coerce(float), vol.Range(min=0, max=360)),
+    vol.Required("saturation"): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+    vol.Optional("value", default=100): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+    vol.Optional("segment_count", default=20): vol.All(vol.Coerce(int), vol.Range(min=1, max=127)),
+})
 SET_SCENE_SCHEMA = vol.Schema({
     vol.Required("address"): str,
     vol.Required("effect"): vol.In(scenes.EFFECT_LIST),
@@ -45,7 +67,24 @@ async def async_setup(hass, config):
             props["scene_combine"] = call.data["combine"]
         await _device(call).send(props)
 
+    async def set_rgb_scene(call):
+        colors = [(c["hue"], c["saturation"], c["value"]) for c in call.data["colors"]]
+        await _device(call).send(rgb_scenes.set_scene_properties(
+            call.data["effect"], colors, call.data["speed"], call.data.get("brightness"),
+            call.data.get("direction")))
+
+    async def paint_segments(call):
+        from .rgb.light import paint_colour
+        try:
+            paint = paint_colour(call.data["hue"], call.data["saturation"], call.data["value"],
+                                 call.data["segments"], call.data["segment_count"])
+        except ValueError as exc:
+            raise vol.Invalid(str(exc)) from exc
+        await _device(call).send({"switch_led": True, "work_mode": "colour", "paint_colour_data": paint})
+
     hass.services.async_register(DOMAIN, "set_scene", set_scene, schema=SET_SCENE_SCHEMA)
+    hass.services.async_register(DOMAIN, "set_rgb_scene", set_rgb_scene, schema=SET_RGB_SCENE_SCHEMA)
+    hass.services.async_register(DOMAIN, "paint_segments", paint_segments, schema=PAINT_SEGMENTS_SCHEMA)
     hass.services.async_register(DOMAIN, "set_properties", set_properties,
         schema=vol.Schema({vol.Required("address"): str, vol.Required("properties"): dict}))
     return True
@@ -199,7 +238,14 @@ async def async_setup_entry(hass, entry):
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = device
     device.task = hass.async_create_background_task(device.run(), f"brizlabs_{entry.entry_id}")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if hasattr(entry, "add_update_listener"):
+        entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def _async_options_updated(hass, entry):
+    """Model changed in the options flow: rebuild the entities for it."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass, entry):

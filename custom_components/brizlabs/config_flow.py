@@ -2,12 +2,13 @@ import re
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
 
-from .const import DOMAIN, SERVICE_UUID
+from .const import CONF_MODEL, DOMAIN, MODEL_RGB, MODELS, SERVICE_UUID, entry_model
 
 DEFAULT_NAME = "BrizLabs Micro String Lights"
 MANUAL = "manual"
@@ -15,6 +16,13 @@ MANUAL = "manual"
 
 def _is_brizlabs(info: BluetoothServiceInfoBleak) -> bool:
     return info.name == "RY" and SERVICE_UUID in info.service_uuids
+
+
+MODEL_FIELD = vol.Required(CONF_MODEL, default=MODEL_RGB)
+
+
+def _entry_data(address, user_input):
+    return {"address": address, CONF_MODEL: user_input.get(CONF_MODEL, MODEL_RGB)}
 
 
 class BrizlabsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -35,11 +43,12 @@ class BrizlabsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_bluetooth_confirm(self, user_input=None):
         if user_input is not None:
-            return self.async_create_entry(title=user_input["name"], data={"address": self._address})
+            return self.async_create_entry(title=user_input["name"], data=_entry_data(self._address, user_input))
         self._set_confirm_only()
         return self.async_show_form(
             step_id="bluetooth_confirm",
-            data_schema=vol.Schema({vol.Required("name", default=DEFAULT_NAME): str}),
+            data_schema=vol.Schema({vol.Required("name", default=DEFAULT_NAME): str,
+                                    MODEL_FIELD: vol.In(MODELS)}),
             description_placeholders={"address": self._address},
         )
 
@@ -51,7 +60,7 @@ class BrizlabsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             address = user_input["address"]
             await self.async_set_unique_id(address)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=user_input["name"], data={"address": address})
+            return self.async_create_entry(title=user_input["name"], data=_entry_data(address, user_input))
 
         configured = self._async_current_ids(include_ignore=False)
         for info in async_discovered_service_info(self.hass, connectable=True):
@@ -64,6 +73,7 @@ class BrizlabsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("address"): vol.In(choices),
             vol.Required("name", default=DEFAULT_NAME): str,
+            MODEL_FIELD: vol.In(MODELS),
         })
         return self.async_show_form(step_id="user", data_schema=schema)
 
@@ -76,6 +86,22 @@ class BrizlabsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(address)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=user_input["name"], data={"address": address})
-        schema = vol.Schema({vol.Required("address"): str, vol.Required("name", default=DEFAULT_NAME): str})
+                return self.async_create_entry(title=user_input["name"], data=_entry_data(address, user_input))
+        schema = vol.Schema({vol.Required("address"): str, vol.Required("name", default=DEFAULT_NAME): str,
+                             MODEL_FIELD: vol.In(MODELS)})
         return self.async_show_form(step_id="manual", data_schema=schema, errors=errors)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return BrizlabsOptionsFlow()
+
+
+class BrizlabsOptionsFlow(config_entries.OptionsFlow):
+    """Switch a light between the RGB and curtain protocols."""
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(data={CONF_MODEL: user_input[CONF_MODEL]})
+        schema = vol.Schema({vol.Required(CONF_MODEL, default=entry_model(self.config_entry)): vol.In(MODELS)})
+        return self.async_show_form(step_id="init", data_schema=schema)

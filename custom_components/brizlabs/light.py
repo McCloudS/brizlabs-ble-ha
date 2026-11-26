@@ -5,10 +5,13 @@ from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
 
 from . import scenes
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_RGB, entry_model
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    if entry_model(entry) == MODEL_RGB:
+        from .rgb import light as rgb_light
+        return await rgb_light.async_setup_entry(hass, entry, async_add_entities)
     async_add_entities([BrizlabsLight(hass.data[DOMAIN][entry.entry_id], entry)])
 
 

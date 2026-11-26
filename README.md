@@ -1,6 +1,6 @@
 # BrizLabs Micro String Lights (Home Assistant, local Bluetooth)
 
-Custom integration v0.5.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
+Custom integration v0.6.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
 **Fork notice:** this repository is the maintained fork of [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). v0.4 replaces the scene codec after an HCI capture of the official iOS app showed the real protocol (`scene_select`); the corresponding upstream PR is [tgmstudios/brizlabs-ha#1](https://github.com/tgmstudios/brizlabs-ha/pull/1). Verified on a 500-LED curtain strand. The upstream `dreamlight_scene_mode` codec may be correct for other BrizLabs products; this fork targets hardware that reports `scene_select`.
 
@@ -22,6 +22,18 @@ Requires the Home Assistant Bluetooth integration with at least one *connectable
 Copy `custom_components/brizlabs` into your Home Assistant `config/custom_components/` directory, restart, then add the integration.
 
 HACS installs from the latest GitHub release if one exists, otherwise from the default branch. Packaging checks (HACS validation, hassfest, tests) run in GitHub Actions.
+
+## Two light models
+BrizLabs sells RY string lights that speak two different protocols. Pick the model when adding the light, or change it later under the integration's **Configure** button.
+
+- **RGB** ("Micro String Lights RGB" in the app: colour wheel, colour schemes, scenes such as Rainbow, Flow, Chase): uses `work_mode` / `paint_colour_data` / `dreamlight_scene_mode`, the protocol from [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). Entities: light with HS colour, brightness and 16 scene + 8 music effects; scene palette, direction and music mode selects; scene speed, music sensitivity and pixel count numbers. Services `brizlabs.set_rgb_scene` (custom 1-7 colour scenes) and `brizlabs.paint_segments`.
+- **Curtain** (scenes named C1/C2 Steady On, Color Mixture, ...): uses `scene_select`, documented below.
+
+Entries created before v0.6.0 default to Curtain. Verified on an RGB micro string: solid colour via `paint_colour_data` confirmed on hardware.
+
+## What changed in v0.6.0
+- RGB model added alongside the curtain model, selected per light (config flow + options flow; changing it reloads the entry).
+- RGB scene 16 is named `Filling` (from the iOS app grid). Legacy `Music N` effect names are still accepted but hidden from the effect list.
 
 ## What changed in v0.5.0
 - The connection now goes through `homeassistant.components.bluetooth` and `bleak-retry-connector` instead of talking to BlueZ over D-Bus at `/org/bluez/hci0`. Lights reached through ESPHome Bluetooth proxies now work, and HA picks whichever connectable scanner hears the light best.

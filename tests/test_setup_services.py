@@ -54,7 +54,7 @@ async def test_services_registered_and_set_scene_sends_payload():
     await integ.async_setup(hass, {})
     for name in ("set_properties", "set_scene"):
         assert ("brizlabs", name) in hass.services.reg
-    assert ("brizlabs", "paint_segments") not in hass.services.reg
+    assert ("brizlabs", "paint_segments") in hass.services.reg  # RGB model service
     fn, schema = hass.services.reg[("brizlabs", "set_scene")]
     a, b = FakeDevice("00:11:22:33:44:55"), FakeDevice("00:11:22:33:44:66")
     hass.data["brizlabs"] = {"1": a, "2": b}

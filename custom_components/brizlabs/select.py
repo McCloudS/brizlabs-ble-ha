@@ -6,13 +6,16 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 
 from . import scenes
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_RGB, entry_model
 
 MUSIC_OPTIONS = ["Rock & Roll", "Jazz", "Classical", "Energy", "Roll", "Pop", "Rock", "Kpop"]
 _NAME_TO_MUSIC = {name: i for i, name in enumerate(MUSIC_OPTIONS)}
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
+    if entry_model(entry) == MODEL_RGB:
+        from .rgb import select as rgb_select
+        return await rgb_select.async_setup_entry(hass, entry, async_add_entities)
     async_add_entities([BrizlabsMusicSelect(hass.data[DOMAIN][entry.entry_id], entry)])
 
 
