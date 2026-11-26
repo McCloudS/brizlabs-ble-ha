@@ -143,7 +143,7 @@ def test_property_value_shapes():
 def test_report_types_accepted():
     device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
     for kind, ok in (("thing.property.report", True), ("thing.property.get.response", True),
-                     ("thing.property.post", True), ("thing.property.set", False), ("other", False)):
+                     ("thing.property.post", True), ("thing.property.set", False), ("other", True)):
         device.values = {}
         for packet in encode({"type": kind, "data": {"switch_led": True}}):
             device.notification(None, packet)
@@ -205,3 +205,23 @@ async def test_only_rgb_entries_poll(monkeypatch):
     assert made == [integ.RGB_POLL_SECONDS, None]
     for d in hass.data["brizlabs"].values():
         d.stop.set()
+
+
+def test_unknown_report_layouts_are_found():
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
+    layouts = [
+        {"switch_led": True, "work_mode": "scene", "ts": 1},                      # flat, no type/data
+        {"method": "report", "params": {"switch_led": True, "work_mode": "scene"}},
+        {"msg": {"props": [{"code": "switch_led", "value": True}, {"code": "work_mode", "value": "scene"}]}},
+    ]
+    for layout in layouts:
+        device.values = {}
+        device.report_event.clear()
+        for packet in encode(layout):
+            device.notification(None, packet)
+        assert device.values.get("switch_led") is True and device.values.get("work_mode") == "scene", layout
+        assert device.report_event.is_set()
+    device.values = {}
+    for packet in encode({"ts": 1, "code": 0}):       # nothing recognisable: ignored
+        device.notification(None, packet)
+    assert device.values == {}

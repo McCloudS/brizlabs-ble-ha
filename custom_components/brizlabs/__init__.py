@@ -130,6 +130,30 @@ def _property_values(data):
     return out
 
 
+KNOWN_PROPERTIES = {"switch_led", "work_mode", "bright_value", "paint_colour_data",
+                    "dreamlight_scene_mode", "scene_select", "scene_combine", "device_music",
+                    "sensitivity", "lightpixel_number_set", "light_pixel", "temp_value"}
+
+
+def _find_properties(obj, depth=0):
+    """Locate the light's properties anywhere in a report whose layout we don't know.
+
+    Returns the first mapping (or key/value list) that holds a known property name.
+    """
+    if depth > 6:
+        return None
+    candidate = _property_values(obj) if isinstance(obj, (dict, list)) else None
+    if candidate and KNOWN_PROPERTIES & set(candidate):
+        return candidate
+    children = obj.values() if isinstance(obj, dict) else obj if isinstance(obj, list) else ()
+    for child in children:
+        if isinstance(child, (dict, list)):
+            found = _find_properties(child, depth + 1)
+            if found:
+                return found
+    return None
+
+
 class _NotSeen(Exception):
     """The light is not currently heard by any connectable scanner."""
 
@@ -165,15 +189,16 @@ class BrizlabsDevice:
         message = self.decoder.feed(bytes(data))
         if message is None:
             return  # partial multi-packet message, or a frame the decoder rejected
+        _LOGGER.debug("BrizLabs %s rx: %.1500r", self.address, message)
         if not isinstance(message, dict):
-            _LOGGER.debug("BrizLabs %s rx non-object: %.300r", self.address, message)
             return
-        kind = str(message.get("type", ""))
-        _LOGGER.debug("BrizLabs %s rx %s: %.600s", self.address, kind, message.get("data"))
-        if not kind.startswith("thing.property.") or kind == "thing.property.set":
-            return
-        values = _property_values(message.get("data"))
-        if values is None:
+        kind = str(message.get("type") or message.get("method") or "")
+        if kind.endswith("property.set"):
+            return  # our own command echoed back, or a set-ack
+        values = _property_values(message.get("data")) if "data" in message else None
+        if not values:
+            values = _find_properties(message)
+        if not values:
             return
         self.last_report = time.monotonic()
         self.report_event.set()
