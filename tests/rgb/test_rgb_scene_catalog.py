@@ -5,10 +5,10 @@ SEQ = ["Rainbow", "Flow", "Up & Down", "Chase", "Shooting Star", "Pile Up", "Fal
        "Jump", "Breath", "Flicker", "Shuttle", "Random Flash", "Rebound", "Flutter"]
 
 def P(x):
-    """Palette label(s) without the colour-swatch prefix."""
+    """Original palette name(s) for dropdown label(s)."""
     if isinstance(x, str):
-        return S.strip_swatch(x)
-    return x if x is None else [S.strip_swatch(i) for i in x]
+        return S.palette_name(x) or x
+    return x if x is None else [S.palette_name(i) or i for i in x]
 
 
 
@@ -98,7 +98,7 @@ def test_apply_palette_unknown_raises():
 
 def test_palette_label_custom_for_uncaptured():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
-    assert P(S.palette_label(custom)) == P("Custom: Hue 10, Hue 20")
+    assert P(S.palette_label(custom)) == "Custom: Red · Orange"
 
 
 def test_with_speed():

@@ -9,10 +9,10 @@ from custom_components.brizlabs.rgb.select import BrizlabsMusicSelect, BrizlabsS
 from tests.rgb.fakes import FakeDevice, entry, scene_values
 
 def P(x):
-    """Palette label(s) without the colour-swatch prefix."""
+    """Original palette name(s) for dropdown label(s)."""
     if isinstance(x, str):
-        return S.strip_swatch(x)
-    return x if x is None else [S.strip_swatch(i) for i in x]
+        return S.palette_name(x) or x
+    return x if x is None else [S.palette_name(i) or i for i in x]
 
 
 
@@ -122,7 +122,7 @@ def test_palette_select_shows_custom_palette_as_current():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
     dev = FakeDevice(values={"work_mode": "scene", "dreamlight_scene_mode": custom})
     sel = BrizlabsScenePaletteSelect(dev, entry())
-    assert P(sel.current_option) == P("Custom: Hue 10, Hue 20")
+    assert P(sel.current_option) == "Custom: Red · Orange"
     assert P(sel.current_option) in P(sel.options)
 
 

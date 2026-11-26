@@ -6,10 +6,10 @@ LABELS = ["Green gradient", "Rainbow 1", "Rainbow 2", "Rainbow 3", "Red", "Green
           "White + Red + Green"]
 
 def P(x):
-    """Palette label(s) without the colour-swatch prefix."""
+    """Original palette name(s) for dropdown label(s)."""
     if isinstance(x, str):
-        return S.strip_swatch(x)
-    return x if x is None else [S.strip_swatch(i) for i in x]
+        return S.palette_name(x) or x
+    return x if x is None else [S.palette_name(i) or i for i in x]
 
 
 
@@ -96,16 +96,17 @@ def test_legacy_label_aliases_still_apply():
 
 def test_custom_still_custom():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
-    assert P(S.palette_label(custom)) == P("Custom: Hue 10, Hue 20")
+    assert P(S.palette_label(custom)) == "Custom: Red · Orange"
 
 
-def test_dropdown_labels_carry_colour_swatch_and_round_trip():
+def test_dropdown_labels_name_the_colours_and_accept_old_names():
     flow = S.default_scene_payload(1)
     opts = S.palette_options(1)
-    assert opts[12] == "\U0001F7E5\U0001F7E9 Red + Green"
-    assert opts[11] == "⬜\U0001F7E5 White + Red"
+    assert opts[12] == "Red \u00b7 Green" and opts[11] == "White \u00b7 Red"
+    assert opts[1] == "Yellow \u00b7 Lime \u00b7 Cyan \u00b7 Purple \u00b7 Sky blue"
+    assert len(opts) == len(set(opts))
     for opt in opts:
-        # the swatch label and the plain name select the same colours
-        assert S.apply_palette(flow, opt) == S.apply_palette(flow, S.strip_swatch(opt))
         assert S.palette_label(S.apply_palette(flow, opt)) == opt
-    assert S.strip_swatch("Red + Green") == "Red + Green"
+    # original names and the v0.7.0 emoji labels still select the same palette
+    for old in ("Red + Green", "\U0001F7E5\U0001F7E9 Red + Green"):
+        assert S.apply_palette(flow, old) == S.apply_palette(flow, "Red \u00b7 Green")

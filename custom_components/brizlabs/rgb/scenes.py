@@ -239,7 +239,25 @@ def _colors_label(colors) -> str:
     return ", ".join(colour_label(c) for c in colors)
 
 
-# Colour-square prefix so the dropdown shows each palette at a glance.
+# --- Display labels: the palette's colours in words ----------------------
+_HUE_BANDS = ((15, "Red"), (45, "Orange"), (72, "Yellow"), (100, "Lime"), (150, "Green"),
+              (195, "Cyan"), (225, "Sky blue"), (262, "Blue"), (300, "Purple"), (340, "Pink"),
+              (361, "Red"))
+
+
+def colour_word(c: Colour) -> str:
+    if c.saturation < 200:
+        return "White"
+    name = next(n for limit, n in _HUE_BANDS if c.hue % 360 < limit)
+    return f"Light {name.lower()}" if c.saturation < 700 else name
+
+
+def display_label(colors) -> str:
+    """Dropdown label for a palette: its colours in order, e.g. 'White · Red · Green'."""
+    return " \u00b7 ".join(colour_word(c) for c in colors)
+
+
+# Colour-square prefix used by v0.7.0 labels; still accepted as input.
 _EMOJI_HUES = ((0, "\U0001F7E5"), (30, "\U0001F7E7"), (60, "\U0001F7E8"), (120, "\U0001F7E9"),
                (180, "\U0001FA75"), (240, "\U0001F7E6"), (288, "\U0001F7EA"), (325, "\U0001FA77"),
                (360, "\U0001F7E5"))
@@ -321,9 +339,41 @@ def _palettes(scene_id: int) -> list[tuple[str, tuple[Colour, ...]]]:
     return list(PRESET_PALETTES) + _extra_palettes(scene_id)
 
 
+def _display_palettes(scene_id: int) -> list[tuple[str, tuple[Colour, ...]]]:
+    out, used = [], set()
+    for _, colors in _palettes(scene_id):
+        label, n = display_label(colors), 1
+        while label in used:
+            n += 1
+            label = f"{display_label(colors)} ({n})"
+        used.add(label)
+        out.append((label, colors))
+    return out
+
+
 def palette_options(scene_id: int) -> list[str]:
     """Labels offered for a scene: the 15 global presets, then legacy extras."""
-    return [with_swatch(label, colors) for label, colors in _palettes(scene_id)]
+    return [label for label, _ in _display_palettes(scene_id)]
+
+
+def _accepted_labels(scene_id: int) -> dict[str, tuple[Colour, ...]]:
+    """Every label that selects a palette: current, the original names, v0.7 emoji names."""
+    accepted = {}
+    for (name, colors), (shown, _) in zip(_palettes(scene_id), _display_palettes(scene_id)):
+        for key in (shown, name, with_swatch(name, colors)):
+            accepted.setdefault(key, colors)
+    return accepted
+
+
+def palette_name(label: str) -> str | None:
+    """Original (preset/extra) name for any accepted label, or None if unknown."""
+    for sid in CAPTURED_PALETTES:
+        for (name, colors), (shown, _) in zip(_palettes(sid), _display_palettes(sid)):
+            if label in (shown, name, with_swatch(name, colors)):
+                return name
+    if label.startswith("Custom: "):
+        return label
+    return strip_swatch(label) if strip_swatch(label) != label else None
 
 
 def palette_label(payload: str) -> str | None:
@@ -332,10 +382,10 @@ def palette_label(payload: str) -> str | None:
         scene = decode_scene(payload)
     except (ValueError, TypeError):
         return None
-    for label, colors in _palettes(scene.scene_id):
+    for label, colors in _display_palettes(scene.scene_id):
         if colors == scene.colors:
-            return with_swatch(label, colors)
-    return with_swatch(f"Custom: {_colors_label(scene.colors)}", scene.colors)
+            return label
+    return f"Custom: {display_label(scene.colors)}"
 
 
 def _legacy_palette_colors(label: str):
@@ -352,8 +402,7 @@ def apply_palette(current_payload: str, label: str) -> str:
     """Swap the colours of the current scene for a preset/extra palette, keeping
     the scene id, speed, change mode and header direction byte."""
     current = decode_scene(current_payload)
-    label = strip_swatch(label)
-    colors = dict(_palettes(current.scene_id)).get(label)
+    colors = _accepted_labels(current.scene_id).get(label)
     if colors is None:
         legacy = _legacy_palette_colors(label)
         # accept an old label only if it still maps to an offered palette

@@ -51,6 +51,7 @@ SET_SCENE_SCHEMA = vol.Schema({
 
 
 STATIC_URL = "/brizlabs_static"
+RGB_POLL_SECONDS = 60
 
 
 async def _register_static(hass):
@@ -105,12 +106,36 @@ async def async_setup(hass, config):
     return True
 
 
+def _property_values(data):
+    """Flatten a report's data into {key: value}.
+
+    Seen shapes: {"k": v}, {"k": {"value": v}} (valueless dicts are set-acks and
+    are skipped), and [{"key"/"code": k, "value": v}, ...].
+    """
+    out = {}
+    if isinstance(data, dict):
+        items = data.items()
+    elif isinstance(data, list):
+        items = [((d.get("key") or d.get("code")), d) for d in data if isinstance(d, dict)]
+    else:
+        return None
+    for key, value in items:
+        if key is None:
+            continue
+        if isinstance(value, dict):
+            if "value" not in value:
+                continue
+            value = value["value"]
+        out[key] = value
+    return out
+
+
 class _NotSeen(Exception):
     """The light is not currently heard by any connectable scanner."""
 
 
 class BrizlabsDevice:
-    def __init__(self, hass: HomeAssistant, address: str):
+    def __init__(self, hass: HomeAssistant, address: str, poll_interval: float | None = None):
         self.hass = hass
         self.address = address
         self.values = {}
@@ -124,6 +149,9 @@ class BrizlabsDevice:
         self.stop = asyncio.Event()
         self.disconnected = asyncio.Event()
         self._warned_missing = False
+        self.poll_interval = poll_interval
+        self.report_event = asyncio.Event()
+        self.last_report = None
 
     def subscribe(self, callback):
         self.listeners.add(callback)
@@ -135,16 +163,22 @@ class BrizlabsDevice:
 
     def notification(self, _sender, data):
         message = self.decoder.feed(bytes(data))
+        if message is None:
+            return  # partial multi-packet message, or a frame the decoder rejected
         if not isinstance(message, dict):
+            _LOGGER.debug("BrizLabs %s rx non-object: %.300r", self.address, message)
             return
-        if message.get("type") not in ("thing.property.report", "thing.property.get.response"):
+        kind = str(message.get("type", ""))
+        _LOGGER.debug("BrizLabs %s rx %s: %.600s", self.address, kind, message.get("data"))
+        if not kind.startswith("thing.property.") or kind == "thing.property.set":
             return
+        values = _property_values(message.get("data"))
+        if values is None:
+            return
+        self.last_report = time.monotonic()
+        self.report_event.set()
         changed = False
-        for key, value in message.get("data", {}).items():
-            if isinstance(value, dict):
-                if "value" not in value:
-                    continue  # valueless set-ack; keep last known value
-                value = value["value"]
+        for key, value in values.items():
             if self.values.get(key) != value:
                 self.values[key] = value
                 changed = True
@@ -188,11 +222,16 @@ class BrizlabsDevice:
                 await client.start_notify(notify_char, self.notification)
                 self.available = True
                 self.update()
-                await self.get()
+                await self._initial_sync()
                 stop_wait = asyncio.ensure_future(self.stop.wait())
                 disc_wait = asyncio.ensure_future(self.disconnected.wait())
                 try:
-                    await asyncio.wait({stop_wait, disc_wait}, return_when=asyncio.FIRST_COMPLETED)
+                    while True:
+                        done, _ = await asyncio.wait({stop_wait, disc_wait}, timeout=self.poll_interval,
+                                                     return_when=asyncio.FIRST_COMPLETED)
+                        if done:
+                            break
+                        await self.get()  # periodic resync: picks up app / remote changes
                 finally:
                     stop_wait.cancel()
                     disc_wait.cancel()
@@ -247,9 +286,25 @@ class BrizlabsDevice:
     async def get(self):
         await self.send()
 
+    async def _initial_sync(self, attempts=3, wait=3.0):
+        """Ask for the full state until the light answers (it can miss the first ask)."""
+        for attempt in range(attempts):
+            self.report_event.clear()
+            await self.get()
+            try:
+                await asyncio.wait_for(self.report_event.wait(), timeout=wait)
+                return True
+            except asyncio.TimeoutError:
+                _LOGGER.debug("BrizLabs %s: no state reply to get #%d", self.address, attempt + 1)
+        _LOGGER.warning("BrizLabs %s did not report its state after %d requests; "
+                        "showing the last known state", self.address, attempts)
+        return False
+
 
 async def async_setup_entry(hass, entry):
-    device = BrizlabsDevice(hass, entry.data["address"])
+    from .const import MODEL_RGB, entry_model
+    poll = RGB_POLL_SECONDS if entry_model(entry) == MODEL_RGB else None
+    device = BrizlabsDevice(hass, entry.data["address"], poll_interval=poll)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = device
     device.task = hass.async_create_background_task(device.run(), f"brizlabs_{entry.entry_id}")
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

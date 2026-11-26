@@ -1,6 +1,6 @@
 # BrizLabs Micro String Lights (Home Assistant, local Bluetooth)
 
-Custom integration v0.7.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
+Custom integration v0.8.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
 **Fork notice:** this repository is the maintained fork of [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). v0.4 replaces the scene codec after an HCI capture of the official iOS app showed the real protocol (`scene_select`); the corresponding upstream PR is [tgmstudios/brizlabs-ha#1](https://github.com/tgmstudios/brizlabs-ha/pull/1). Verified on a 500-LED curtain strand. The upstream `dreamlight_scene_mode` codec may be correct for other BrizLabs products; this fork targets hardware that reports `scene_select`.
 
@@ -30,6 +30,10 @@ BrizLabs sells RY string lights that speak two different protocols. Pick the mod
 - **Curtain** (scenes named C1/C2 Steady On, Color Mixture, ...): uses `scene_select`, documented below.
 
 Entries created before v0.6.0 default to Curtain. Verified on an RGB micro string: solid colour via `paint_colour_data` confirmed on hardware.
+
+## What changed in v0.8.0
+- RGB palette labels name the colours in order (`White · Red · Green`, `Yellow · Lime · Cyan · Purple · Sky blue`) instead of emoji squares. The original names and the v0.7.0 emoji labels are still accepted.
+- State sync: on connect the integration asks for the light's state until it answers (3 tries), accepts more report shapes, and RGB lights are re-read every 60 s so changes from the app or remote show up. Received reports are logged at debug level.
 
 ## What changed in v0.7.0
 - RGB palette dropdown labels start with colour squares (e.g. `🟥🟩 Red + Green`). Plain names without the squares are still accepted by `select.select_option`.

@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 
 import custom_components.brizlabs as integ
+from custom_components.brizlabs.protocol import Decoder, encode
 from custom_components.brizlabs.const import NOTIFY_UUID, SERVICE_UUID, WRITE_UUID
 
 ADDR = "44:4A:D6:0C:62:DD"
@@ -22,8 +23,14 @@ class FakeClient:
     async def start_notify(self, char, callback):
         self.notify = callback
 
+    reply = {"switch_led": True, "work_mode": "colour"}
+
     async def write_gatt_char(self, char, data, response=True):
         self.writes.append(bytes(data))
+        msg = Decoder().feed(bytes(data))
+        if msg and msg.get("type") == "thing.property.get" and self.reply is not None and self.notify:
+            for packet in encode({"type": "thing.property.get.response", "data": self.reply}):
+                self.notify(None, packet)
 
     async def disconnect(self):
         self.is_connected = False
@@ -111,3 +118,90 @@ def test_discovery_filter():
     assert _is_brizlabs(SimpleNamespace(name="RY", service_uuids=[SERVICE_UUID]))
     assert not _is_brizlabs(SimpleNamespace(name="RY", service_uuids=[]))
     assert not _is_brizlabs(SimpleNamespace(name="wyze_hub", service_uuids=[SERVICE_UUID]))
+
+
+async def test_startup_reads_real_state_from_light(monkeypatch):
+    calls = patch(monkeypatch, SimpleNamespace(address=ADDR, name="RY"))
+    FakeClient.reply = {"switch_led": True, "work_mode": "colour"}
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
+    task = asyncio.ensure_future(device.run())
+    await wait_for(lambda: device.values.get("switch_led") is True)
+    assert device.values["work_mode"] == "colour" and device.last_report is not None
+    device.stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+def test_property_value_shapes():
+    pv = integ._property_values
+    assert pv({"switch_led": True}) == {"switch_led": True}
+    assert pv({"switch_led": {"value": False}, "ack": {}}) == {"switch_led": False}
+    assert pv([{"key": "bright_value", "value": 40}, {"code": "work_mode", "value": "scene"}]) == \
+        {"bright_value": 40, "work_mode": "scene"}
+    assert pv("junk") is None
+
+
+def test_report_types_accepted():
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
+    for kind, ok in (("thing.property.report", True), ("thing.property.get.response", True),
+                     ("thing.property.post", True), ("thing.property.set", False), ("other", False)):
+        device.values = {}
+        for packet in encode({"type": kind, "data": {"switch_led": True}}):
+            device.notification(None, packet)
+        assert (device.values == {"switch_led": True}) is ok, kind
+
+
+async def test_initial_sync_retries_then_gives_up(monkeypatch):
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
+    asks = []
+
+    async def get():
+        asks.append(1)
+        if len(asks) == 2:
+            device.report_event.set()  # light answers the second ask
+
+    device.get = get
+    assert await device._initial_sync(attempts=3, wait=0.05) is True and len(asks) == 2
+    asks.clear()
+    device.get = lambda: asyncio.sleep(0, asks.append(1))
+    assert await device._initial_sync(attempts=3, wait=0.01) is False and len(asks) == 3
+
+
+async def test_periodic_resync_polls_while_connected(monkeypatch):
+    calls = patch(monkeypatch, SimpleNamespace(address=ADDR, name="RY"))
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR, poll_interval=0.05)
+    task = asyncio.ensure_future(device.run())
+    await wait_for(lambda: device.available)
+    client = calls["clients"][0]
+    start = len(client.writes)
+    await asyncio.sleep(0.2)
+    assert len(client.writes) >= start + 2  # re-asked for state at least twice
+    device.stop.set()
+    await asyncio.wait_for(task, 2)
+
+
+async def test_only_rgb_entries_poll(monkeypatch):
+    from custom_components.brizlabs.const import CONF_MODEL, MODEL_CURTAIN, MODEL_RGB
+    made = []
+
+    class Rec:
+        def __init__(self, hass, address, poll_interval=None):
+            made.append(poll_interval)
+            self.stop = asyncio.Event()
+            self.task = None
+
+        async def run(self):
+            await self.stop.wait()
+
+    monkeypatch.setattr(integ, "BrizlabsDevice", Rec)
+
+    async def fwd(e, platforms):
+        pass
+
+    hass = SimpleNamespace(data={}, config_entries=SimpleNamespace(async_forward_entry_setups=fwd),
+                           async_create_background_task=lambda coro, name: asyncio.ensure_future(coro))
+    for i, model in enumerate((MODEL_RGB, MODEL_CURTAIN)):
+        entry = SimpleNamespace(entry_id=f"e{i}", data={"address": ADDR, CONF_MODEL: model}, options={})
+        await integ.async_setup_entry(hass, entry)
+    assert made == [integ.RGB_POLL_SECONDS, None]
+    for d in hass.data["brizlabs"].values():
+        d.stop.set()

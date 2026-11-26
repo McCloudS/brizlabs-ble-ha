@@ -31,10 +31,11 @@ def rgb(c) -> str:
 
 
 def frame(body: str, label: str) -> str:
+    size = 17 if len(label) <= 22 else max(10, round(17 * 22 / len(label)))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}">'
             f'<rect width="{W}" height="{H}" rx="14" fill="{BG}"/>{body}'
             f'<text x="{W / 2}" y="{H - 12}" text-anchor="middle" fill="#f2f2f7" '
-            f'font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="17" '
+            f'font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="{size}" '
             f'font-weight="600">{escape(label)}</text></svg>\n')
 
 
@@ -69,7 +70,7 @@ def main():
         colors = S.decode_scene(S.default_scene_payload(sid)).colors
         (OUT / f"scene_{slug(name)}.svg").write_text(scene_svg(name, colors))
     for name, colors in S.PRESET_PALETTES:
-        (OUT / f"palette_{slug(name)}.svg").write_text(palette_svg(name, colors))
+        (OUT / f"palette_{slug(name)}.svg").write_text(palette_svg(S.display_label(colors), colors))
     print(f"wrote {len(list(OUT.glob('*.svg')))} images to {OUT}")
 
 

@@ -36,7 +36,7 @@ def make_hass():
 
 
 class RunnableDevice(FakeDevice):
-    def __init__(self, hass, address):
+    def __init__(self, hass, address, **kwargs):
         super().__init__(address)
         self.stop = asyncio.Event()
 
