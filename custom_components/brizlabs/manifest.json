@@ -1,16 +1,26 @@
 {
   "domain": "brizlabs",
   "name": "BrizLabs Micro String Lights",
+  "bluetooth": [
+    {
+      "local_name": "RY",
+      "service_uuid": "0000a101-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    }
+  ],
   "codeowners": [
     "@tgmstudios"
   ],
   "config_flow": true,
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
   "documentation": "https://github.com/tgmstudios/brizlabs-ha",
   "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/tgmstudios/brizlabs-ha/issues",
   "requirements": [
-    "bleak>=0.22.0"
+    "bleak-retry-connector>=3.5.0"
   ],
-  "version": "0.4.0"
+  "version": "0.5.0"
 }

@@ -1,6 +1,6 @@
 # BrizLabs Micro String Lights (Home Assistant, local Bluetooth)
 
-Custom integration v0.4.0, for BrizLabs RY micro string lights over BLE via BlueZ. No cloud.
+Custom integration v0.5.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
 **Status:** v0.4.0. The scene protocol was captured from the official iOS app over Bluetooth HCI and re-verified on real hardware: every scene, brightness level, colour/white balance, speed, loop sequence, and music mode in this integration maps to a frame the app itself sends. 61 automated tests replay the captured app traffic against a fake device. Unofficial, not affiliated with BrizLabs or Tuya.
 
@@ -14,12 +14,18 @@ Requires [HACS](https://www.hacs.dev/). This repository is **not** in the HACS d
 2. Repository: `https://github.com/tgmstudios/brizlabs-ha`, Type: **Integration**, then **Add**.
 3. Find **BrizLabs Micro String Lights** in HACS, **Download**, and restart Home Assistant.
 4. Settings → Devices & services → **Add integration** → BrizLabs Micro String Lights.
-Requires a Bluetooth adapter reachable by BlueZ and `bleak`. Declared Home Assistant minimum (`hacs.json`) is 2026.8.2; tested on 2026.8.2 and 2026.11.3 (bleak 3.0.2).
+Requires the Home Assistant Bluetooth integration with at least one *connectable* scanner in range of the light: a local adapter or an ESPHome Bluetooth proxy with active connections enabled. Declared Home Assistant minimum (`hacs.json`) is 2026.8.2; tested on 2026.8.2 and 2026.11.3 (bleak 3.0.2).
 
 ### Manual
 Copy `custom_components/brizlabs` into your Home Assistant `config/custom_components/` directory, restart, then add the integration.
 
 HACS installs from the latest GitHub release if one exists, otherwise from the default branch. Packaging checks (HACS validation, hassfest, tests) run in GitHub Actions.
+
+## What changed in v0.5.0
+- The connection now goes through `homeassistant.components.bluetooth` and `bleak-retry-connector` instead of talking to BlueZ over D-Bus at `/org/bluez/hci0`. Lights reached through ESPHome Bluetooth proxies now work, and HA picks whichever connectable scanner hears the light best.
+- Bluetooth discovery: lights advertising as `RY` with service `0000a101-...` show up under *Discovered*, and the setup form lists them. Manual MAC entry is still available.
+- The connection reacts to the disconnect callback immediately instead of polling every 5 seconds.
+- The light holds a persistent connection, so it uses one of the proxy's active-connection slots (ESPHome proxies have 3 by default).
 
 ## What changed in v0.4.0
 v0.3 controlled scenes through `dreamlight_scene_mode` / `work_mode` payloads inferred from a related product. An HCI capture of the official app proved the actual protocol is different: scenes are a single `scene_select` string, `work_mode` is never written, and brightness, colour/white balance, and speed all ride inside `scene_select`. v0.4.0 replaces the old codec end to end. The palette and direction selects, `paint_segments`, HS colour, and the pixel-count number are removed (they belong to the old codec and the device ignores them). Light unique IDs are unchanged, so existing automations keep working.

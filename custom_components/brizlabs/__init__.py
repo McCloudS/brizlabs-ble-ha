@@ -6,10 +6,8 @@ import time
 import uuid
 
 import voluptuous as vol
-from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
-from bleak.backends.device import BLEDevice
-from bleak.backends.bluezdbus.scanner import BleakScannerBlueZDBus
-from bleak.exc import BleakError
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from . import scenes
@@ -27,7 +25,6 @@ SET_SCENE_SCHEMA = vol.Schema({
     vol.Optional("speed"): vol.All(vol.Coerce(int), vol.Range(min=0, max=scenes.MAX_SPEED)),
     vol.Optional("combine"): vol.All(str, vol.Length(min=2, max=28)),
 })
-SCAN_LOCK = asyncio.Lock()
 
 
 async def async_setup(hass, config):
@@ -54,6 +51,10 @@ async def async_setup(hass, config):
     return True
 
 
+class _NotSeen(Exception):
+    """The light is not currently heard by any connectable scanner."""
+
+
 class BrizlabsDevice:
     def __init__(self, hass: HomeAssistant, address: str):
         self.hass = hass
@@ -67,6 +68,8 @@ class BrizlabsDevice:
         self.lock = asyncio.Lock()
         self.task = None
         self.stop = asyncio.Event()
+        self.disconnected = asyncio.Event()
+        self._warned_missing = False
 
     def subscribe(self, callback):
         self.listeners.add(callback)
@@ -94,61 +97,59 @@ class BrizlabsDevice:
         if changed:
             self.update()
 
+    def _disconnected(self, _client):
+        self.disconnected.set()
+
     async def run(self):
+        """Keep a persistent connection through Home Assistant's Bluetooth stack.
+
+        Going through ``homeassistant.components.bluetooth`` lets the connection
+        use whichever connectable scanner currently hears the light best: a
+        local adapter or an ESPHome / Shelly Bluetooth proxy.
+        """
         while not self.stop.is_set():
             client = None
-            scanner = None
             try:
-                path = "/org/bluez/hci0/dev_" + self.address.replace(":", "_")
-                known = BLEDevice(self.address, "RY", {"path": path, "props": {}})
-                client = BleakClientBlueZDBus(known, bluez={}, timeout=25)
-                try:
-                    await client.connect(pair=False)
-                except BleakError as exc:
-                    if "not found" not in str(exc):
-                        raise
-                    async with SCAN_LOCK:
-                        found = asyncio.Event()
-                        discovered = None
-
-                        def on_advertisement(ble_device, _advertisement):
-                            nonlocal discovered
-                            if ble_device.address.upper() == self.address:
-                                discovered = ble_device
-                                found.set()
-
-                        scanner = BleakScannerBlueZDBus(on_advertisement, None, "active", bluez={})
-                        await scanner.start()
-                        await asyncio.wait_for(found.wait(), timeout=20)
-                        client = BleakClientBlueZDBus(discovered, bluez={}, timeout=25)
-                        await client.connect(pair=False)
-                        await scanner.stop()
-                        scanner = None
+                ble_device = bluetooth.async_ble_device_from_address(
+                    self.hass, self.address, connectable=True)
+                if ble_device is None:
+                    if not self._warned_missing:
+                        _LOGGER.warning(
+                            "BrizLabs %s is not being heard by any connectable Bluetooth "
+                            "adapter or proxy; will keep retrying", self.address)
+                        self._warned_missing = True
+                    raise _NotSeen
+                self._warned_missing = False
+                self.disconnected.clear()
+                client = await establish_connection(
+                    BleakClientWithServiceCache, ble_device, self.address,
+                    disconnected_callback=self._disconnected, max_attempts=3)
                 self.client = client
                 self.decoder = Decoder()
                 self.write_char = client.services.get_characteristic(WRITE_UUID)
                 notify_char = client.services.get_characteristic(NOTIFY_UUID)
                 if not self.write_char or not notify_char:
+                    await client.clear_cache()
                     raise RuntimeError("BrizLabs GATT characteristics are missing")
-                await client.start_notify(notify_char, lambda data: self.notification(None, data), bluez={})
+                await client.start_notify(notify_char, self.notification)
                 self.available = True
                 self.update()
                 await self.get()
-                while client.is_connected and not self.stop.is_set():
-                    try:
-                        await asyncio.wait_for(self.stop.wait(), timeout=5)
-                    except asyncio.TimeoutError:
-                        pass
+                stop_wait = asyncio.ensure_future(self.stop.wait())
+                disc_wait = asyncio.ensure_future(self.disconnected.wait())
+                try:
+                    await asyncio.wait({stop_wait, disc_wait}, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    stop_wait.cancel()
+                    disc_wait.cancel()
             except asyncio.CancelledError:
                 raise
+            except _NotSeen:
+                pass
             except Exception as exc:
-                _LOGGER.warning("BrizLabs %s connection: %s", self.address, exc, exc_info=True)
+                _LOGGER.warning("BrizLabs %s connection: %s", self.address, exc,
+                                exc_info=_LOGGER.isEnabledFor(logging.DEBUG))
             finally:
-                if scanner:
-                    try:
-                        await scanner.stop()
-                    except Exception:
-                        pass
                 self.available = False
                 self.client = None
                 self.write_char = None

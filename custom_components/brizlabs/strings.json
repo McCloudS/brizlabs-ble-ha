@@ -1,7 +1,12 @@
 {
   "config": {
-    "step": {"user": {"title": "BrizLabs Micro String Lights", "data": {"address": "Bluetooth address", "name": "Name"}}},
+    "flow_title": "{name}",
+    "step": {
+      "user": {"title": "BrizLabs Micro String Lights", "data": {"address": "Light", "name": "Name"}},
+      "manual": {"title": "BrizLabs Micro String Lights", "data": {"address": "Bluetooth address", "name": "Name"}},
+      "bluetooth_confirm": {"title": "BrizLabs Micro String Lights", "description": "Set up the light at {address}? Close the BrizLabs app first; the light accepts only one Bluetooth connection.", "data": {"name": "Name"}}
+    },
     "error": {"invalid_address": "Enter a Bluetooth MAC address"},
-    "abort": {"already_configured": "This light is already configured"}
+    "abort": {"already_configured": "This light is already configured", "already_in_progress": "Setup for this light is already in progress"}
   }
 }
