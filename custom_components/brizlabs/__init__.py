@@ -154,6 +154,16 @@ def _find_properties(obj, depth=0):
     return None
 
 
+_NO_DATA = object()
+# State-request payloads to try, in order. #0 is what the app-derived code sent.
+GET_VARIANTS = (
+    [],
+    sorted(KNOWN_PROPERTIES),
+    {key: None for key in sorted(KNOWN_PROPERTIES)},
+    _NO_DATA,
+)
+
+
 class _NotSeen(Exception):
     """The light is not currently heard by any connectable scanner."""
 
@@ -176,6 +186,7 @@ class BrizlabsDevice:
         self.poll_interval = poll_interval
         self.report_event = asyncio.Event()
         self.last_report = None
+        self.get_variant = None  # index into GET_VARIANTS once one is known to work
 
     def subscribe(self, callback):
         self.listeners.add(callback)
@@ -256,7 +267,8 @@ class BrizlabsDevice:
                                                      return_when=asyncio.FIRST_COMPLETED)
                         if done:
                             break
-                        await self.get()  # periodic resync: picks up app / remote changes
+                        if self.get_variant is not None:
+                            await self.get()  # periodic resync: picks up app / remote changes
                 finally:
                     stop_wait.cancel()
                     disc_wait.cancel()
@@ -283,46 +295,62 @@ class BrizlabsDevice:
                 except asyncio.TimeoutError:
                     pass
 
-    async def send(self, properties=None):
+    async def _write(self, message: dict):
         if not self.client or not self.client.is_connected:
             raise ConnectionError(f"BrizLabs {self.address} is disconnected")
-        message = {
-            "ts": int(time.time()),
-            "data": properties if properties is not None else [],
-            "type": "thing.property.set" if properties is not None else "thing.property.get",
-        }
-        if properties is not None:
-            message["msgId"] = uuid.uuid4().hex[:16]
         async with self.lock:
             for packet in encode(message):
                 await self.client.write_gatt_char(self.write_char, packet, response=True)
                 await asyncio.sleep(0.03)
-            if properties is not None:
-                # The device echoes some sets without a value and never reports
-                # its true render state, so track what we set ourselves.
-                changed = False
-                for key, value in properties.items():
-                    if self.values.get(key) != value:
-                        self.values[key] = value
-                        changed = True
-                if changed:
-                    self.update()
 
-    async def get(self):
-        await self.send()
-
-    async def _initial_sync(self, attempts=3, wait=3.0):
-        """Ask for the full state until the light answers (it can miss the first ask)."""
-        for attempt in range(attempts):
-            self.report_event.clear()
+    async def send(self, properties=None):
+        if properties is None:
             await self.get()
+            return
+        await self._write({"ts": int(time.time()), "data": properties,
+                           "type": "thing.property.set", "msgId": uuid.uuid4().hex[:16]})
+        # The device does not answer state requests reliably, so track what we set.
+        changed = False
+        for key, value in properties.items():
+            if self.values.get(key) != value:
+                self.values[key] = value
+                changed = True
+        if changed:
+            self.update()
+
+    async def get(self, variant: int | None = None):
+        """Ask for the light's state using a request format (see GET_VARIANTS)."""
+        index = self.get_variant if variant is None else variant
+        message = {"ts": int(time.time()), "type": "thing.property.get",
+                   "msgId": uuid.uuid4().hex[:16]}
+        data = GET_VARIANTS[index or 0]
+        if data is not _NO_DATA:
+            message["data"] = data
+        await self._write(message)
+
+    async def _initial_sync(self, wait=3.0):
+        """Find a state-request format the light answers.
+
+        The RGB string acknowledges a bare get without sending its state, so
+        try the known formats once each and remember the first that works.
+        """
+        order = [self.get_variant] if self.get_variant is not None else []
+        order += [i for i in range(len(GET_VARIANTS)) if i not in order]
+        for index in order:
+            self.report_event.clear()
+            await self.get(index)
             try:
                 await asyncio.wait_for(self.report_event.wait(), timeout=wait)
-                return True
             except asyncio.TimeoutError:
-                _LOGGER.debug("BrizLabs %s: no state reply to get #%d", self.address, attempt + 1)
-        _LOGGER.warning("BrizLabs %s did not report its state after %d requests; "
-                        "showing the last known state", self.address, attempts)
+                _LOGGER.debug("BrizLabs %s: no state reply to get format #%d", self.address, index)
+                continue
+            if self.get_variant != index:
+                _LOGGER.info("BrizLabs %s answers state requests in format #%d", self.address, index)
+            self.get_variant = index
+            return True
+        self.get_variant = None
+        _LOGGER.info("BrizLabs %s does not answer state requests; using the last known state "
+                     "and the changes it reports", self.address)
         return False
 
 

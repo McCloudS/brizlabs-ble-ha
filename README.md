@@ -1,6 +1,6 @@
 # BrizLabs Micro String Lights (Home Assistant, local Bluetooth)
 
-Custom integration v0.8.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
+Custom integration v0.9.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
 **Fork notice:** this repository is the maintained fork of [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). v0.4 replaces the scene codec after an HCI capture of the official iOS app showed the real protocol (`scene_select`); the corresponding upstream PR is [tgmstudios/brizlabs-ha#1](https://github.com/tgmstudios/brizlabs-ha/pull/1). Verified on a 500-LED curtain strand. The upstream `dreamlight_scene_mode` codec may be correct for other BrizLabs products; this fork targets hardware that reports `scene_select`.
 
@@ -30,6 +30,10 @@ BrizLabs sells RY string lights that speak two different protocols. Pick the mod
 - **Curtain** (scenes named C1/C2 Steady On, Color Mixture, ...): uses `scene_select`, documented below.
 
 Entries created before v0.6.0 default to Curtain. Verified on an RGB micro string: solid colour via `paint_colour_data` confirmed on hardware.
+
+## What changed in v0.9.0
+- The RGB string acknowledges a bare state request (`ble recv all data success`) without sending its state; it only pushes `thing.property.report` when something changes. On connect the integration now tries several request formats once each, remembers the one the light answers (logged at info level), and only polls when one works.
+- The RGB light restores its last Home Assistant state after a restart, so it no longer comes back as off/unknown; reports pushed by the light update it from there.
 
 ## What changed in v0.8.0
 - RGB palette labels name the colours in order (`White · Red · Green`, `Yellow · Lime · Cyan · Purple · Sky blue`) instead of emoji squares. The original names and the v0.7.0 emoji labels are still accepted.

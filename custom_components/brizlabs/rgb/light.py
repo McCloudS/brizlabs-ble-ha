@@ -3,6 +3,7 @@
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_EFFECT, ATTR_HS_COLOR, ColorMode, LightEntity, LightEntityFeature
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import scenes
 from ..const import DOMAIN
@@ -27,7 +28,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([BrizlabsLight(hass.data[DOMAIN][entry.entry_id], entry)])
 
 
-class BrizlabsLight(LightEntity):
+def restored_values(state) -> dict:
+    """Device properties recovered from the light's last saved HA state."""
+    if state is None or state.state not in ("on", "off"):
+        return {}
+    attrs = state.attributes
+    values = {"switch_led": state.state == "on"}
+    if attrs.get("brightness") is not None:
+        values["bright_value"] = max(1, min(100, round(attrs["brightness"] * 100 / 255)))
+    mode = attrs.get("work_mode")
+    if mode:
+        values["work_mode"] = mode
+    if attrs.get("scene_data"):
+        values["dreamlight_scene_mode"] = attrs["scene_data"]
+    if attrs.get("device_music") is not None:
+        values["device_music"] = attrs["device_music"]
+    hs = attrs.get("hs_color")
+    if mode == "colour" and hs:
+        values["paint_colour_data"] = paint_colour(hs[0], hs[1], 100)
+    return values
+
+
+class BrizlabsLight(LightEntity, RestoreEntity):
     _attr_has_entity_name = True
     _attr_name = None
     _attr_supported_color_modes = {ColorMode.HS}
@@ -48,6 +70,13 @@ class BrizlabsLight(LightEntity):
 
     async def async_added_to_hass(self):
         self.async_on_remove(self.device.subscribe(self._changed))
+        # The light does not answer state requests, so start from the state it
+        # was in before the restart; its own change reports update it from here.
+        restored = restored_values(await self.async_get_last_state())
+        missing = {k: v for k, v in restored.items() if k not in self.device.values}
+        if missing:
+            self.device.values.update(missing)
+            self.device.update()
 
     @callback
     def _changed(self):

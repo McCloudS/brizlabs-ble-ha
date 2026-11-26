@@ -278,3 +278,40 @@ def test_palette_options_never_empty_without_scene():
     sel = BrizlabsScenePaletteSelect(FakeDevice(values={"work_mode": "colour"}), entry())
     assert not sel.available
     assert P(sel.options) == P([label for label, _ in S.PRESET_PALETTES])
+
+
+def test_restored_values_from_last_state():
+    from types import SimpleNamespace as NS
+    from custom_components.brizlabs.rgb.light import paint_colour, restored_values
+    assert restored_values(None) == {} and restored_values(NS(state="unavailable", attributes={})) == {}
+    scene = S.default_scene_payload(0)
+    on_scene = NS(state="on", attributes={"brightness": 128, "work_mode": "scene", "scene_data": scene})
+    assert restored_values(on_scene) == {"switch_led": True, "bright_value": 50, "work_mode": "scene",
+                                         "dreamlight_scene_mode": scene}
+    colour = NS(state="on", attributes={"work_mode": "colour", "hs_color": [240, 100]})
+    assert restored_values(colour)["paint_colour_data"] == paint_colour(240, 100, 100)
+    assert restored_values(NS(state="off", attributes={})) == {"switch_led": False}
+
+
+async def test_light_seeds_device_from_restored_state(monkeypatch):
+    from types import SimpleNamespace as NS
+    dev = FakeDevice(values={})
+    light = BrizlabsLight(dev, entry())
+    last = NS(state="on", attributes={"work_mode": "scene", "scene_data": S.default_scene_payload(0)})
+
+    async def last_state():
+        return last
+
+    light.async_get_last_state = last_state
+    light.async_on_remove = lambda f: None
+    light.async_write_ha_state = lambda: None
+    await light.async_added_to_hass()
+    assert light.is_on and light.effect == "Rainbow"
+    # a live report already received wins over the restored value
+    dev2 = FakeDevice(values={"switch_led": False})
+    light2 = BrizlabsLight(dev2, entry())
+    light2.async_get_last_state = last_state
+    light2.async_on_remove = lambda f: None
+    light2.async_write_ha_state = lambda: None
+    await light2.async_added_to_hass()
+    assert not light2.is_on

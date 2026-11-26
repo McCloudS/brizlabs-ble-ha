@@ -150,20 +150,48 @@ def test_report_types_accepted():
         assert (device.values == {"switch_led": True}) is ok, kind
 
 
-async def test_initial_sync_retries_then_gives_up(monkeypatch):
+async def test_initial_sync_tries_formats_and_remembers_the_one_answered():
     device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
-    asks = []
+    asked = []
 
-    async def get():
-        asks.append(1)
-        if len(asks) == 2:
-            device.report_event.set()  # light answers the second ask
+    async def get(variant=None):
+        asked.append(variant)
+        if variant == 2:
+            device.report_event.set()  # light answers only the third format
 
     device.get = get
-    assert await device._initial_sync(attempts=3, wait=0.05) is True and len(asks) == 2
-    asks.clear()
-    device.get = lambda: asyncio.sleep(0, asks.append(1))
-    assert await device._initial_sync(attempts=3, wait=0.01) is False and len(asks) == 3
+    assert await device._initial_sync(wait=0.02) is True
+    assert asked == [0, 1, 2] and device.get_variant == 2
+    asked.clear()
+    assert await device._initial_sync(wait=0.02) is True
+    assert asked == [2]  # known-good format is tried first next time
+
+
+async def test_initial_sync_gives_up_and_stops_polling():
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR, poll_interval=0.01)
+    asked = []
+
+    async def get(variant=None):
+        asked.append(variant)
+
+    device.get = get
+    assert await device._initial_sync(wait=0.01) is False
+    assert asked == list(range(len(integ.GET_VARIANTS))) and device.get_variant is None
+
+
+async def test_get_variant_payloads():
+    device = integ.BrizlabsDevice(SimpleNamespace(), ADDR)
+    sent = []
+
+    async def write(message):
+        sent.append(message)
+
+    device._write = write
+    for i in range(len(integ.GET_VARIANTS)):
+        await device.get(i)
+    assert [m.get("data", "absent") for m in sent][0] == []
+    assert "switch_led" in sent[1]["data"] and sent[2]["data"]["switch_led"] is None
+    assert "data" not in sent[3] and all(m["type"] == "thing.property.get" for m in sent)
 
 
 async def test_periodic_resync_polls_while_connected(monkeypatch):
