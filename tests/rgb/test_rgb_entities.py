@@ -265,3 +265,9 @@ async def test_palette_select_current_custom_option_is_noop():
     with pytest.raises(HomeAssistantError):
         await sel.async_select_option("Custom: Hue 99")
     assert dev.sent == []
+
+
+def test_palette_options_never_empty_without_scene():
+    sel = BrizlabsScenePaletteSelect(FakeDevice(values={"work_mode": "colour"}), entry())
+    assert not sel.available
+    assert sel.options == [label for label, _ in S.PRESET_PALETTES]

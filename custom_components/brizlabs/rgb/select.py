@@ -57,7 +57,8 @@ class BrizlabsScenePaletteSelect(_BrizlabsSelect):
     def options(self):
         payload = self._payload()
         if payload is None:
-            return []
+            # Never empty: HomeKit and some cards fail on a select with no options.
+            return [label for label, _ in scenes.PRESET_PALETTES]
         options = scenes.palette_options(scenes.decode_scene(payload).scene_id)
         current = scenes.palette_label(payload)
         return options + [current] if current not in options else options
