@@ -13,7 +13,8 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "bluetooth_adapters"
+    "bluetooth_adapters",
+    "http"
   ],
   "documentation": "https://github.com/tgmstudios/brizlabs-ha",
   "integration_type": "device",
@@ -22,5 +23,5 @@
   "requirements": [
     "bleak-retry-connector>=3.5.0"
   ],
-  "version": "0.6.0"
+  "version": "0.7.0"
 }

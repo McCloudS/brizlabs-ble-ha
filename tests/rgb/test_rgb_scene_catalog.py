@@ -4,6 +4,13 @@ from custom_components.brizlabs.rgb import scenes as S
 SEQ = ["Rainbow", "Flow", "Up & Down", "Chase", "Shooting Star", "Pile Up", "Fall", "Fade",
        "Jump", "Breath", "Flicker", "Shuttle", "Random Flash", "Rebound", "Flutter"]
 
+def P(x):
+    """Palette label(s) without the colour-swatch prefix."""
+    if isinstance(x, str):
+        return S.strip_swatch(x)
+    return x if x is None else [S.strip_swatch(i) for i in x]
+
+
 
 def test_scene_names_follow_capture_tap_order_mapping():
     # Capture tap order (screenshot row-major) was ids 00,01,02,03,04,05,08,07,06,09..0e
@@ -46,8 +53,8 @@ def test_palette_options_unique_per_scene():
     for sid in S.SCENE_NAMES:
         opts = S.palette_options(sid)
         assert opts and len(opts) == len(set(opts))
-    assert S.palette_options(4) == [label for label, _ in S.PRESET_PALETTES]
-    assert "White, Green" in S.palette_options(2)
+    assert P(S.palette_options(4)) == P([label for label, _ in S.PRESET_PALETTES])
+    assert P("White, Green") in P(S.palette_options(2))
 
 
 def test_effect_for_values():
@@ -80,7 +87,7 @@ def test_apply_palette_preserves_speed_and_version():
     other = S.palette_options(1)[1]
     new = S.decode_scene(S.apply_palette(cur, other))
     assert (new.version, new.scene_id, new.change_mode, new.speed) == (1, 1, 2, 33)
-    assert S.palette_label(S.encode_scene(new)) == other
+    assert P(S.palette_label(S.encode_scene(new))) == P(other)
     assert new.colors != base.colors
 
 
@@ -91,7 +98,7 @@ def test_apply_palette_unknown_raises():
 
 def test_palette_label_custom_for_uncaptured():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
-    assert S.palette_label(custom) == "Custom: Hue 10, Hue 20"
+    assert P(S.palette_label(custom)) == P("Custom: Hue 10, Hue 20")
 
 
 def test_with_speed():

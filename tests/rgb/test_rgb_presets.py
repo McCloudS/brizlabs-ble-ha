@@ -5,6 +5,13 @@ LABELS = ["Green gradient", "Rainbow 1", "Rainbow 2", "Rainbow 3", "Red", "Green
           "Purple", "Orange", "Purple + Orange", "White + Red", "Red + Green", "White + Blue",
           "White + Red + Green"]
 
+def P(x):
+    """Palette label(s) without the colour-swatch prefix."""
+    if isinstance(x, str):
+        return S.strip_swatch(x)
+    return x if x is None else [S.strip_swatch(i) for i in x]
+
+
 
 def test_ordered_fixture_is_clean(ordered):
     assert ordered["errors"] == [] and ordered["pending"] == []
@@ -36,7 +43,7 @@ def test_event_0_and_restore_are_not_presets(ordered):
 
 @pytest.mark.parametrize("sid", sorted(S.SCENE_NAMES))
 def test_every_scene_offers_all_fifteen_presets_first(sid):
-    assert S.palette_options(sid)[:15] == LABELS
+    assert P(S.palette_options(sid)[:15]) == P(LABELS)
 
 
 @pytest.mark.parametrize("sid", sorted(S.SCENE_NAMES))
@@ -72,12 +79,12 @@ def test_apply_each_preset_keeps_scene_speed_direction(sid, speed, direction):
         new = S.decode_scene(S.apply_palette(cur, label))
         assert (new.version, new.scene_id, new.change_mode, new.speed) == (direction, sid, base.change_mode, speed)
         assert new.colors == colors
-        assert S.palette_label(S.encode_scene(new)) == label
+        assert P(S.palette_label(S.encode_scene(new))) == P(label)
 
 
 def test_palette_label_recognises_preset_in_any_scene(ordered):
     for (label, _), ev in zip(S.PRESET_PALETTES, ordered["scene_events"][1:16]):
-        assert S.palette_label(ev["payload"]) == label
+        assert P(S.palette_label(ev["payload"])) == P(label)
 
 
 def test_legacy_label_aliases_still_apply():
@@ -89,4 +96,16 @@ def test_legacy_label_aliases_still_apply():
 
 def test_custom_still_custom():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
-    assert S.palette_label(custom) == "Custom: Hue 10, Hue 20"
+    assert P(S.palette_label(custom)) == P("Custom: Hue 10, Hue 20")
+
+
+def test_dropdown_labels_carry_colour_swatch_and_round_trip():
+    flow = S.default_scene_payload(1)
+    opts = S.palette_options(1)
+    assert opts[12] == "\U0001F7E5\U0001F7E9 Red + Green"
+    assert opts[11] == "⬜\U0001F7E5 White + Red"
+    for opt in opts:
+        # the swatch label and the plain name select the same colours
+        assert S.apply_palette(flow, opt) == S.apply_palette(flow, S.strip_swatch(opt))
+        assert S.palette_label(S.apply_palette(flow, opt)) == opt
+    assert S.strip_swatch("Red + Green") == "Red + Green"

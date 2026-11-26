@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 import uuid
+from pathlib import Path
 
 import voluptuous as vol
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
@@ -49,7 +50,21 @@ SET_SCENE_SCHEMA = vol.Schema({
 })
 
 
+STATIC_URL = "/brizlabs_static"
+
+
+async def _register_static(hass):
+    """Serve the dashboard swatch images shipped in www/ at /brizlabs_static/."""
+    http = getattr(hass, "http", None)
+    if http is None:
+        return
+    from homeassistant.components.http import StaticPathConfig
+    await http.async_register_static_paths(
+        [StaticPathConfig(STATIC_URL, str(Path(__file__).parent / "www"), True)])
+
+
 async def async_setup(hass, config):
+    await _register_static(hass)
     def _device(call):
         address = call.data["address"].upper()
         device = next((d for d in hass.data.get(DOMAIN, {}).values() if d.address == address), None)

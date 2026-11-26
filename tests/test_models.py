@@ -40,3 +40,22 @@ async def test_platforms_dispatch_on_model(model, light_cls, selects):
     assert {type(e).__name__ for e in added["select"]} == selects
     if model == MODEL_RGB:
         assert added["light"][0].supported_color_modes == {"hs"}
+
+
+async def test_swatch_images_served_and_complete():
+    from pathlib import Path
+    import custom_components.brizlabs as integ
+    from custom_components.brizlabs.rgb import scenes as S
+    registered = []
+
+    class Http:
+        async def async_register_static_paths(self, configs):
+            registered.extend(configs)
+
+    await integ._register_static(SimpleNamespace(http=Http()))
+    assert registered[0].url_path == "/brizlabs_static"
+    www = Path(registered[0].path)
+    names = {p.name for p in www.glob("*.svg")}
+    assert len(names) == len(S.SCENE_NAMES) + len(S.PRESET_PALETTES)
+    assert "scene_up_down.svg" in names and "palette_white_red_green.svg" in names
+    await integ._register_static(SimpleNamespace())  # no http component: no crash

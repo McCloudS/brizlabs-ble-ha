@@ -239,6 +239,36 @@ def _colors_label(colors) -> str:
     return ", ".join(colour_label(c) for c in colors)
 
 
+# Colour-square prefix so the dropdown shows each palette at a glance.
+_EMOJI_HUES = ((0, "\U0001F7E5"), (30, "\U0001F7E7"), (60, "\U0001F7E8"), (120, "\U0001F7E9"),
+               (180, "\U0001FA75"), (240, "\U0001F7E6"), (288, "\U0001F7EA"), (325, "\U0001FA77"),
+               (360, "\U0001F7E5"))
+_WHITE_EMOJI = "\u2B1C"
+_SWATCH_CHARS = {e for _, e in _EMOJI_HUES} | {_WHITE_EMOJI}
+
+
+def colour_emoji(c: Colour) -> str:
+    if c.saturation < 200:
+        return _WHITE_EMOJI
+    return min(_EMOJI_HUES, key=lambda he: abs(he[0] - c.hue))[1]
+
+
+def swatch(colors) -> str:
+    return "".join(colour_emoji(c) for c in colors)
+
+
+def with_swatch(label: str, colors) -> str:
+    return f"{swatch(colors)} {label}"
+
+
+def strip_swatch(label: str) -> str:
+    """Plain palette name from a dropdown label (accepts names without a swatch too)."""
+    head, sep, rest = label.partition(" ")
+    if sep and head and all(ch in _SWATCH_CHARS for ch in head):
+        return rest
+    return label
+
+
 def _c(h, s=1000):
     return Colour(h, s, 1000)
 
@@ -293,7 +323,7 @@ def _palettes(scene_id: int) -> list[tuple[str, tuple[Colour, ...]]]:
 
 def palette_options(scene_id: int) -> list[str]:
     """Labels offered for a scene: the 15 global presets, then legacy extras."""
-    return [label for label, _ in _palettes(scene_id)]
+    return [with_swatch(label, colors) for label, colors in _palettes(scene_id)]
 
 
 def palette_label(payload: str) -> str | None:
@@ -304,8 +334,8 @@ def palette_label(payload: str) -> str | None:
         return None
     for label, colors in _palettes(scene.scene_id):
         if colors == scene.colors:
-            return label
-    return f"Custom: {_colors_label(scene.colors)}"
+            return with_swatch(label, colors)
+    return with_swatch(f"Custom: {_colors_label(scene.colors)}", scene.colors)
 
 
 def _legacy_palette_colors(label: str):
@@ -322,6 +352,7 @@ def apply_palette(current_payload: str, label: str) -> str:
     """Swap the colours of the current scene for a preset/extra palette, keeping
     the scene id, speed, change mode and header direction byte."""
     current = decode_scene(current_payload)
+    label = strip_swatch(label)
     colors = dict(_palettes(current.scene_id)).get(label)
     if colors is None:
         legacy = _legacy_palette_colors(label)

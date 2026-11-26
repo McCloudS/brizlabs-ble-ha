@@ -8,6 +8,13 @@ from custom_components.brizlabs.rgb.number import BrizlabsNumber, BrizlabsSceneS
 from custom_components.brizlabs.rgb.select import BrizlabsMusicSelect, BrizlabsScenePaletteSelect
 from tests.rgb.fakes import FakeDevice, entry, scene_values
 
+def P(x):
+    """Palette label(s) without the colour-swatch prefix."""
+    if isinstance(x, str):
+        return S.strip_swatch(x)
+    return x if x is None else [S.strip_swatch(i) for i in x]
+
+
 
 def wire(ent):
     ent.written = 0
@@ -96,12 +103,12 @@ def test_light_keeps_segment_painting_helper():
 def test_palette_select_options_follow_current_scene():
     dev = FakeDevice(values=scene_values(2))
     sel = BrizlabsScenePaletteSelect(dev, entry())
-    assert sel.options == S.palette_options(2)
-    assert sel.current_option == "White, Green"  # legacy extra, not one of the 15 presets
-    assert sel.current_option in sel.options
+    assert P(sel.options) == P(S.palette_options(2))
+    assert P(sel.current_option) == P("White, Green")  # legacy extra, not one of the 15 presets
+    assert P(sel.current_option) in P(sel.options)
     dev.values = scene_values(1, 1)
-    assert sel.options == S.palette_options(1)
-    assert sel.current_option == "Rainbow 3"
+    assert P(sel.options) == P(S.palette_options(1))
+    assert P(sel.current_option) == P("Rainbow 3")
 
 
 def test_palette_select_unavailable_or_empty_outside_scene():
@@ -115,8 +122,8 @@ def test_palette_select_shows_custom_palette_as_current():
     custom = S.encode_scene(S.build_scene(1, [(10, 100, 100), (20, 100, 100)]))
     dev = FakeDevice(values={"work_mode": "scene", "dreamlight_scene_mode": custom})
     sel = BrizlabsScenePaletteSelect(dev, entry())
-    assert sel.current_option == "Custom: Hue 10, Hue 20"
-    assert sel.current_option in sel.options
+    assert P(sel.current_option) == P("Custom: Hue 10, Hue 20")
+    assert P(sel.current_option) in P(sel.options)
 
 
 @pytest.mark.asyncio
@@ -131,12 +138,12 @@ async def test_palette_select_preserves_speed_scene_and_brightness():
     assert dev.sent[0]["work_mode"] == "scene"
     new = S.decode_scene(dev.sent[0]["dreamlight_scene_mode"])
     assert (new.scene_id, new.speed) == (1, 33)
-    assert S.palette_label(dev.sent[0]["dreamlight_scene_mode"]) == target
+    assert P(S.palette_label(dev.sent[0]["dreamlight_scene_mode"])) == P(target)
     assert "bright_value" not in dev.sent[0]
     # not optimistic: selection unchanged until hardware reports
-    assert sel.current_option == "Rainbow 2"
+    assert P(sel.current_option) == P("Rainbow 2")
     dev.report(dreamlight_scene_mode=dev.sent[0]["dreamlight_scene_mode"])
-    assert sel.current_option == target
+    assert P(sel.current_option) == P(target)
 
 
 @pytest.mark.asyncio
@@ -145,7 +152,7 @@ async def test_palette_select_follows_app_update():
     sel = wire(BrizlabsScenePaletteSelect(dev, entry()))
     await sel.async_added_to_hass()
     dev.report(**scene_values(3, 1))
-    assert sel.written == 1 and sel.current_option == "Purple, Green"
+    assert sel.written == 1 and P(sel.current_option) == "Purple, Green"
 
 
 @pytest.mark.asyncio
@@ -270,4 +277,4 @@ async def test_palette_select_current_custom_option_is_noop():
 def test_palette_options_never_empty_without_scene():
     sel = BrizlabsScenePaletteSelect(FakeDevice(values={"work_mode": "colour"}), entry())
     assert not sel.available
-    assert sel.options == [label for label, _ in S.PRESET_PALETTES]
+    assert P(sel.options) == P([label for label, _ in S.PRESET_PALETTES])

@@ -1,6 +1,6 @@
 # BrizLabs Micro String Lights (Home Assistant, local Bluetooth)
 
-Custom integration v0.6.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
+Custom integration v0.7.0, for BrizLabs RY micro string lights over BLE through Home Assistant's Bluetooth stack (local adapters and ESPHome/Shelly Bluetooth proxies). No cloud.
 
 **Fork notice:** this repository is the maintained fork of [tgmstudios/brizlabs-ha](https://github.com/tgmstudios/brizlabs-ha). v0.4 replaces the scene codec after an HCI capture of the official iOS app showed the real protocol (`scene_select`); the corresponding upstream PR is [tgmstudios/brizlabs-ha#1](https://github.com/tgmstudios/brizlabs-ha/pull/1). Verified on a 500-LED curtain strand. The upstream `dreamlight_scene_mode` codec may be correct for other BrizLabs products; this fork targets hardware that reports `scene_select`.
 
@@ -30,6 +30,10 @@ BrizLabs sells RY string lights that speak two different protocols. Pick the mod
 - **Curtain** (scenes named C1/C2 Steady On, Color Mixture, ...): uses `scene_select`, documented below.
 
 Entries created before v0.6.0 default to Curtain. Verified on an RGB micro string: solid colour via `paint_colour_data` confirmed on hardware.
+
+## What changed in v0.7.0
+- RGB palette dropdown labels start with colour squares (e.g. `🟥🟩 Red + Green`). Plain names without the squares are still accepted by `select.select_option`.
+- Picture tiles for every RGB scene and palette are served by the integration at `/brizlabs_static/scene_<name>.svg` and `/brizlabs_static/palette_<name>.svg` (regenerate with `python3 scripts/make_swatches.py`). Use them in `picture` cards with a `tap_action`.
 
 ## What changed in v0.6.0
 - RGB model added alongside the curtain model, selected per light (config flow + options flow; changing it reloads the entry).
